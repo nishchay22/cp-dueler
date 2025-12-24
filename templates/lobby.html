@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Duel Room</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; text-align: center; background: #222; color: white; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        
+        /* Player List */
+        .player-card { 
+            background: #333; padding: 10px; margin: 10px; 
+            border-radius: 8px; display: flex; justify-content: space-between; align-items: center;
+        }
+        .ready-status { font-weight: bold; }
+        .ready-true { color: #4caf50; }  /* Green */
+        .ready-false { color: #f44336; } /* Red */
+
+        /* Buttons */
+        button { padding: 12px 24px; font-size: 16px; cursor: pointer; border: none; border-radius: 4px; margin: 10px; }
+        .btn-ready { background: #ff9800; color: white; }
+        .btn-ready.is-ready { background: #4caf50; } /* Turns Green when ready */
+        .btn-start { background: #2196f3; color: white; display: none; } /* Hidden initially */
+        
+        #game-area { display: none; background: #333; padding: 30px; border-radius: 10px; }
+        a { color: #64b5f6; text-decoration: none; font-size: 1.5em; }
+        
+        input { padding: 10px; border-radius: 4px; border: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2 style="color: #ccc;">Room ID: <span id="room-display">{{ room_id }}</span></h2>
+        <button onclick="copyLink()">🔗 Copy Invite Link</button>
+        <p>Mode: <strong>{{ mode }}</strong></p>
+        
+        <div id="setup">
+            <input type="text" id="handle" placeholder="Enter Codeforces Handle">
+            <button onclick="join()">Join Lobby</button>
+        </div>
+
+        <div id="lobby-ui" style="display: none;">
+            <h3>Players</h3>
+            <div id="players-list"></div>
+            
+            <br>
+            <button id="btn-ready" class="btn-ready" onclick="toggleReady()">I'm Ready</button>
+            <button id="btn-start" class="btn-start" onclick="tryStartGame()">🚀 START DUEL</button>
+        </div>
+
+        <div id="game-area">
+            <h1>⚔️ DUEL STARTED ⚔️</h1>
+            <div id="problems-list"></div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const roomId = "{{ room_id }}";
+        let myHandle = "";
+        
+        let trackingInterval = null;
+        let targetProblemIds = []; 
+        let activePlayers = [];
+
+        function copyLink() {
+            navigator.clipboard.writeText(window.location.href);
+            alert("Link copied!");
+        }
+        
+        function join() {
+            const h = document.getElementById('handle').value;
+            if(!h) return alert("Enter handle!");
+            myHandle = h.trim(); // Trim spaces
+            document.getElementById('setup').style.display = 'none';
+            document.getElementById('lobby-ui').style.display = 'block';
+            socket.emit('join', {room: roomId, handle: myHandle});
+        }
+
+        function toggleReady() {
+            socket.emit('toggle_ready', {room: roomId, handle: myHandle});
+        }
+
+        function tryStartGame() {
+            socket.emit('start_game', {room: roomId});
+        }
+
+        socket.on('update_players', (players) => {
+            activePlayers = players.map(p => p.handle);
+            const list = document.getElementById('players-list');
+            const startBtn = document.getElementById('btn-start');
+            const readyBtn = document.getElementById('btn-ready');
+
+            list.innerHTML = players.map(p => `
+                <div class="player-card" style="border-left: 5px solid ${p.ready ? '#4caf50' : '#f44336'}">
+                    <span>${p.handle}</span>
+                    <span class="ready-status ${p.ready ? 'ready-true' : 'ready-false'}">
+                        ${p.ready ? 'READY ✅' : 'WAITING...'}
+                    </span>
+                </div>
+            `).join('');
+
+            const me = players.find(p => p.handle === myHandle);
+            if (me) {
+                readyBtn.innerText = me.ready ? "Wait, unready" : "I'm Ready!";
+                if(me.ready) readyBtn.classList.add('is-ready');
+                else readyBtn.classList.remove('is-ready');
+            }
+            const allReady = players.length > 0 && players.every(p => p.ready);
+            startBtn.style.display = allReady ? "inline-block" : "none";
+        });
+
+        socket.on('game_started', (data) => {
+            console.log("GAME STARTED DATA:", data); // DEBUG LOG 1
+            document.getElementById('lobby-ui').style.display = 'none';
+            document.getElementById('game-area').style.display = 'block';
+            
+            // Ensure IDs are strings
+            targetProblemIds = (data.track_ids || []).map(String);
+            console.log("WATCHING FOR PROBLEM IDS:", targetProblemIds); // DEBUG LOG 2
+            
+            const list = document.getElementById('problems-list');
+            list.innerHTML = data.problems.map(p => 
+                `<div style="margin: 20px;">
+                    <span style="background:#444; padding:5px; border-radius:4px;">${p.rating}</span>
+                    <a href="${p.url}" target="_blank">${p.name}</a>
+                </div>`
+            ).join('');
+
+            startPolling();
+        });
+
+        socket.on('game_over', (data) => {
+            if(trackingInterval) clearInterval(trackingInterval);
+            document.getElementById('game-area').innerHTML = `
+                <div style="margin-top: 50px; text-align:center;">
+                    <h1 style="color: #4caf50; font-size: 3em;">🏆 WINNER 🏆</h1>
+                    <h2 style="color: white;">${data.winner}</h2>
+                    <p>Solved Problem: ${data.problem}</p>
+                    <button onclick="location.reload()" style="padding:10px; cursor:pointer;">New Game</button>
+                </div>
+            `;
+        });
+
+        function startPolling() {
+            if (trackingInterval) clearInterval(trackingInterval);
+            
+            trackingInterval = setInterval(async () => {
+                console.log("🔍 Polling Codeforces...");
+                
+                for (const player of activePlayers) {
+                    try {
+                        const res = await fetch(`https://codeforces.com/api/user.status?handle=${player}&from=1&count=3`);
+                        const data = await res.json();
+                        
+                        if (data.status === "OK") {
+                            for (const sub of data.result) {
+                                // Calculate ID exactly how Python does
+                                const pid = String(sub.problem.contestId) + sub.problem.index;
+                                
+                                console.log(`Checking ${player}: SubID=${pid}, Verdict=${sub.verdict}`);
+
+                                if (sub.verdict === "OK" && targetProblemIds.includes(pid)) {
+                                    console.log("✅ MATCH FOUND! Claiming victory...");
+                                    socket.emit('claim_victory', {
+                                        room: roomId,
+                                        winner: player,
+                                        problem_id: pid
+                                    });
+                                    clearInterval(trackingInterval); // Stop local polling
+                                    return; 
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Polling Error:", e);
+                    }
+                }
+            }, 5000);
+        }
+
+        socket.on('error', (msg) => alert("Error: " + msg));
+    </script>
+</body>
+</html>
