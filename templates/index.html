@@ -11,29 +11,32 @@
 <body>
     <h1>CP Dueler ⚔️</h1>
     <div class="box">
-        <h3>Create Lobby</h3>
-        <select id="mode">
-            <option value="classic">Classic (1v1)</option>
-            <option value="div3">Div 3 Contest</option>
-            <option value="div2">Div 2 Contest</option>
-        </select>
-        <input type="number" id="rating" placeholder="Rating (Classic only)" value="1200">
-        <br>
-        <button onclick="createLobby()">Create Room</button>
-    </div>
+    <h3>Create Lobby</h3>
+    <select id="mode">
+        <option value="classic">Classic (1v1)</option>
+        <option value="div4">Div 4 Contest (noob behavior)</option> <option value="div3">Div 3 Contest (chill)</option>
+        <option value="div2">Div 2 Contest (oh damn)</option> <option value="div1">Div 1 Contest (so tuff)</option>
+    </select>
+    
+    <input type="number" id="rating" placeholder="Rating (Classic only)" value="1200">
+    <input type="number" id="duration" placeholder="Duration (min)" value="60"> <br>
+    <button onclick="createLobby()">Create Room</button>
+</div>
 
-    <script>
-        async function createLobby() {
-            const mode = document.getElementById('mode').value;
-            const rating = document.getElementById('rating').value;
-            const res = await fetch('/create', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: `mode=${mode}&rating=${rating}`
-            });
-            const data = await res.json();
-            window.location.href = `/lobby/${data.room_id}`;
-        }
-    </script>
+<script>
+    async function createLobby() {
+        const mode = document.getElementById('mode').value;
+        const rating = document.getElementById('rating').value;
+        const duration = document.getElementById('duration').value; // Added
+        
+        const res = await fetch('/create', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `mode=${mode}&rating=${rating}&duration=${duration}`
+        });
+        const data = await res.json();
+        window.location.href = `/lobby/${data.room_id}`;
+    }
+</script>
 </body>
 </html>

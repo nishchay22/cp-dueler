@@ -23,6 +23,7 @@ map<int, vector<Problem>> problem_db;
 
 // Standard templates
 map<string, vector<int>> templates = {
+    {"div1", {1400, 1600, 2000, 2200, 2400, 2600}},
     {"div3", {800, 900, 1100, 1300, 1500, 1700}},
     {"div2", {800, 1200, 1600, 1900, 2200}},
     {"div4", {800, 800, 900, 1000, 1100, 1200}}
