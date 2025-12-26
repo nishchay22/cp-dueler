@@ -1,13 +1,27 @@
 #!/bin/bash
 
-# 1. Download Real Data
-echo "Fetching Codeforces Data..."
-python fetch_data.py
+echo "--- STARTUP DIAGNOSTICS ---"
+ls -la # List all files to prove if fetch_data.py exists
 
-# 2. Start C++ Engine (It will now read the file we just downloaded)
+echo "--- FETCHING DATA ---"
+# Check if file exists before running
+if [ -f "fetch_data.py" ]; then
+    python fetch_data.py
+else
+    echo "ERROR: fetch_data.py NOT FOUND in $(pwd)"
+fi
+
+# Check if the JSON was created
+if [ -f "cpp_backend/problems.json" ]; then
+    echo "SUCCESS: problems.json created."
+else
+    echo "CRITICAL: problems.json missing. C++ engine will contain 0 problems."
+fi
+
+echo "--- STARTING C++ ENGINE ---"
 cd cpp_backend
 ./cp_engine &
 cd ..
 
-# 3. Start Python Frontend
+echo "--- STARTING FLASK ---"
 exec gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:8080 app:app
