@@ -1,14 +1,14 @@
 #!/bin/bash
 
 echo "--- STARTUP DIAGNOSTICS ---"
-ls -la # List all files to prove if fetch_data.py exists
+ls -la 
 
 echo "--- FETCHING DATA ---"
-# Check if file exists before running
-if [ -f "fetch_data.py" ]; then
-    python fetch_data.py
+# FIX: Changed 'fetch_data.py' to 'load_data.py'
+if [ -f "load_data.py" ]; then
+    python load_data.py
 else
-    echo "ERROR: fetch_data.py NOT FOUND in $(pwd)"
+    echo "ERROR: load_data.py NOT FOUND in $(pwd)"
 fi
 
 # Check if the JSON was created
