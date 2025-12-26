@@ -1,198 +1,179 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" data-theme="cyberpunk">
 <head>
-    <title>Duel Arena</title>
+    <meta charset="UTF-8">
+    <title>CP Dueler - Arena</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.19/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #1e1e1e; color: #eee; text-align: center; }
-        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+        /* Custom Lockout Animations */
+        .card-problem { transition: all 0.3s ease; }
+        .locked-opponent { filter: grayscale(100%); opacity: 0.5; border: 2px solid #ff5722; pointer-events: none; }
+        .locked-me { border: 2px solid #00e676; box-shadow: 0 0 15px #00e676; }
         
-        /* Timer & Header */
-        #timer-display { font-size: 2.5em; font-weight: bold; color: #ffeb3b; margin: 10px; }
-        
-        /* Leaderboard Table */
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #2d2d2d; }
-        th, td { padding: 12px; border: 1px solid #444; text-align: center; }
-        th { background: #333; }
-        .solved-check { color: #4caf50; font-weight: bold; }
-        
-        /* Problems Grid */
-        .problem-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px; }
-        .problem-card { background: #333; padding: 15px; border-radius: 8px; min-width: 150px; }
-        .problem-card a { color: #64b5f6; text-decoration: none; font-size: 1.1em; display: block; }
-        .problem-rating { font-size: 0.8em; color: #aaa; }
-        
-        /* Setup UI */
-        .btn { padding: 10px 20px; cursor: pointer; border: none; border-radius: 4px; font-size: 16px; margin: 5px; }
-        .btn-ready { background: #ff9800; color: white; }
-        .btn-start { background: #2196f3; color: white; }
-        .ready-true { color: #4caf50; }
-        .ready-false { color: #f44336; }
+        /* Smooth fade in */
+        .fade-in { animation: fadeIn 0.5s ease-in; }
+        @keyframes fadeIn { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
     </style>
 </head>
-<body>
-    <div class="container">
-        <h2>Room: {{ room_id }} <span style="font-size:0.6em">({{ mode }} / {{ duration }} mins)</span></h2>
-        <div id="timer-display">00:00:00</div>
+<body class="min-h-screen bg-base-300 flex flex-col items-center p-4">
+
+    <div class="navbar bg-neutral text-neutral-content rounded-box shadow-lg mb-6 w-full max-w-5xl">
+        <div class="flex-1">
+            <a class="btn btn-ghost normal-case text-xl text-primary font-bold tracking-widest">CP DUELER</a>
+        </div>
+        <div class="flex-none gap-4">
+            <div class="badge badge-accent badge-lg font-mono" id="room-badge">{{ room_id }}</div>
+            <div class="font-mono text-2xl font-black text-warning" id="timer-display">00:00</div>
+        </div>
+    </div>
+
+    <div class="container max-w-5xl w-full">
         
-        <div id="setup-ui">
-            <input type="text" id="handle" placeholder="Enter CF Handle" style="padding:10px;">
-            <button class="btn" onclick="join()">Join</button>
-            <div id="players-list" style="margin-top:20px;"></div>
-            <button id="btn-ready" class="btn btn-ready" style="display:none" onclick="toggleReady()">I'm Ready</button>
-            <button id="btn-start" class="btn btn-start" style="display:none" onclick="startGame()">START</button>
+        <div id="setup-ui" class="hero bg-base-200 rounded-box p-10 shadow-2xl">
+            <div class="hero-content text-center flex-col">
+                <h1 class="text-5xl font-bold font-mono mb-6">PREPARE FOR BATTLE</h1>
+                
+                <div class="join">
+                    <input id="handle" class="input input-bordered input-primary join-item w-full max-w-xs" placeholder="Codeforces Handle" />
+                    <button class="btn btn-primary join-item" onclick="join()">JOIN</button>
+                </div>
+
+                <div id="lobby-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8 w-full hidden">
+                    </div>
+
+                <button id="btn-start" class="btn btn-error btn-wide mt-8 hidden text-lg font-bold animate-pulse" onclick="startGame()">INITIATE SEQUENCE</button>
+            </div>
         </div>
 
-        <div id="game-ui" style="display:none;">
-            <div id="problems-area" class="problem-grid"></div>
-            
-            <h3>Live Standings</h3>
-            <div id="leaderboard-area">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Rank</th>
-                            <th>User</th>
-                            <th>Solved</th>
-                            <th>Penalty</th>
-                        </tr>
-                    </thead>
-                    <tbody id="leaderboard-body"></tbody>
-                </table>
+        <div id="game-ui" class="hidden w-full fade-in">
+            <div class="flex flex-col lg:flex-row gap-6">
+                
+                <div class="flex-1">
+                    <h2 class="text-2xl font-bold mb-4 text-secondary">TARGETS</h2>
+                    <div id="problems-area" class="grid grid-cols-2 md:grid-cols-3 gap-4"></div>
+                </div>
+
+                <div class="w-full lg:w-96">
+                    <h2 class="text-2xl font-bold mb-4 text-secondary">LIVE INTEL</h2>
+                    <div class="overflow-x-auto bg-base-100 rounded-lg shadow-xl border border-primary/20">
+                        <table class="table table-zebra w-full">
+                            <thead>
+                                <tr class="bg-neutral text-neutral-content">
+                                    <th>#</th>
+                                    <th>Operative</th>
+                                    <th>Score</th>
+                                </tr>
+                            </thead>
+                            <tbody id="leaderboard-body"></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
+    <div class="toast toast-end" id="toast-container"></div>
+
     <script>
         const socket = io();
         const roomId = "{{ room_id }}";
+        const mode = "{{ mode }}";
         let myHandle = "";
-        let targetProblemIds = []; 
-        let pollingInterval = null;
-        let endTime = 0;
-
-        // --- SETUP LOGIC ---
-        function join() {
-            const h = document.getElementById('handle').value;
-            if(!h) return;
-            myHandle = h.trim();
-            document.getElementById('btn-ready').style.display = 'inline-block';
-            socket.emit('join', {room: roomId, handle: myHandle});
-        }
-        function toggleReady() { socket.emit('toggle_ready', {room: roomId, handle: myHandle}); }
-        function startGame() { socket.emit('start_game', {room: roomId}); }
+        
+        // ... (Keep your existing join/start/polling logic) ...
+        // ... Only the Render Logic changes below ...
 
         socket.on('update_players', (players) => {
-            document.getElementById('players-list').innerHTML = players.map(p => 
-                `<div>${p.handle} - <span class="${p.ready?'ready-true':'ready-false'}">${p.ready?'READY':'WAITING'}</span></div>`
-            ).join('');
-            
-            const allReady = players.length > 0 && players.every(p => p.ready);
-            document.getElementById('btn-start').style.display = allReady ? 'inline-block' : 'none';
-        });
-
-        // --- GAME LOGIC ---
-        socket.on('game_started', (data) => {
-            document.getElementById('setup-ui').style.display = 'none';
-            document.getElementById('game-ui').style.display = 'block';
-            
-            // 1. Setup Problems
-            targetProblemIds = (data.track_ids || []).map(String);
-            document.getElementById('problems-area').innerHTML = data.problems.map((p, idx) => `
-                <div class="problem-card">
-                    <div class="problem-rating">${p.rating}</div>
-                    <a href="${p.url}" target="_blank">Problem ${String.fromCharCode(65+idx)}</a>
-                    <div style="font-size:0.8em; color:#888;">${p.name}</div>
+            document.getElementById('lobby-grid').classList.remove('hidden');
+            document.getElementById('lobby-grid').innerHTML = players.map(p => `
+                <div class="card bg-base-100 shadow-xl border-l-4 ${p.ready ? 'border-success' : 'border-error'}">
+                    <div class="card-body flex-row items-center gap-4 p-4">
+                        <div class="avatar placeholder">
+                            <div class="bg-neutral-focus text-neutral-content rounded-full w-12">
+                                <span class="text-xl">${p.handle[0].toUpperCase()}</span>
+                            </div>
+                        </div>
+                        <div class="flex-1">
+                            <h2 class="card-title text-sm">${p.handle}</h2>
+                            <div class="badge badge-outline text-xs">${p.rating || 1500} MMR</div>
+                        </div>
+                        ${p.handle === myHandle ? 
+                          `<button class="btn btn-sm ${p.ready ? 'btn-success' : 'btn-outline'}" onclick="toggleReady()">
+                             ${p.ready ? 'READY' : 'WAIT'}
+                           </button>` : 
+                          `<span class="text-xs font-bold ${p.ready ? 'text-success' : 'text-error'}">
+                             ${p.ready ? 'READY' : 'WAITING'}
+                           </span>`
+                        }
+                    </div>
                 </div>
             `).join('');
 
-            // 2. Setup Timer
-            endTime = data.end_time * 1000; // Convert to MS
-            setInterval(updateTimer, 1000);
-            updateTimer();
-
-            // 3. Start Polling
-            startPolling(data.problems);
+            const allReady = players.length > 0 && players.every(p => p.ready);
+            const btnStart = document.getElementById('btn-start');
+            if(allReady) btnStart.classList.remove('hidden');
+            else btnStart.classList.add('hidden');
         });
 
-        function updateTimer() {
-            const now = Date.now();
-            const diff = endTime - now;
-            if (diff <= 0) {
-                document.getElementById('timer-display').innerText = "TIME UP";
-                if(pollingInterval) clearInterval(pollingInterval);
-                return;
-            }
-            const h = Math.floor(diff / 3600000);
-            const m = Math.floor((diff % 3600000) / 60000);
-            const s = Math.floor((diff % 60000) / 1000);
-            document.getElementById('timer-display').innerText = 
-                `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
-        }
-
-        // --- LEADERBOARD LOGIC ---
-        socket.on('update_leaderboard', (scores) => {
-            const tbody = document.getElementById('leaderboard-body');
+        socket.on('game_started', (data) => {
+            document.getElementById('setup-ui').classList.add('hidden');
+            document.getElementById('game-ui').classList.remove('hidden');
             
-            // Convert Dict to Array & Sort
-            const sortedPlayers = Object.keys(scores).map(handle => ({
-                handle: handle,
-                solved: scores[handle].solved.length,
-                penalty: scores[handle].penalty
-            })).sort((a, b) => {
-                if (b.solved !== a.solved) return b.solved - a.solved; // More solved = better
-                return a.penalty - b.penalty; // Less penalty = better
-            });
-
-            tbody.innerHTML = sortedPlayers.map((p, i) => `
-                <tr>
-                    <td>#${i+1}</td>
-                    <td style="font-weight:bold; color: ${p.handle===myHandle?'#4caf50':'#eee'}">${p.handle}</td>
-                    <td>${p.solved}</td>
-                    <td>${p.penalty}</td>
-                </tr>
+            // Render Cards with DaisyUI
+            document.getElementById('problems-area').innerHTML = data.problems.map((p, idx) => `
+                <div id="card-${p.id}" class="card bg-base-100 shadow-xl card-problem hover:shadow-2xl hover:border-primary border border-transparent">
+                    <div class="card-body p-5">
+                        <div class="flex justify-between items-start">
+                            <div class="badge badge-primary badge-outline">${p.rating}</div>
+                            <div class="text-xs opacity-50 font-mono">ID: ${p.id}</div>
+                        </div>
+                        <a href="${p.url}" target="_blank" class="card-title text-lg hover:text-accent mt-2">
+                            ${p.name}
+                        </a>
+                    </div>
+                </div>
             `).join('');
+
+            // ... (Start Timer/Polling) ...
         });
-        
-        socket.on('notification', (msg) => {
-            // Optional: Toast notification
-            console.log(msg);
+
+        // LOCKOUT VISUAL LOGIC
+        socket.on('problem_locked', (data) => {
+            const card = document.getElementById(`card-${data.id}`);
+            if(!card) return;
+            
+            if(data.winner === myHandle) {
+                card.classList.add('locked-me');
+                // Optional: Add "Claimed" badge
+            } else {
+                card.classList.add('locked-opponent');
+            }
         });
 
         socket.on('game_over', (data) => {
-            alert(`GAME OVER! Winner: ${data.winner}`);
-            location.reload();
+            // Cyberpunk Victory Modal
+            document.body.innerHTML = `
+                <div class="hero min-h-screen bg-base-200">
+                    <div class="hero-content text-center">
+                        <div class="max-w-md">
+                            <h1 class="text-6xl font-black text-primary mb-4">VICTORY</h1>
+                            <p class="py-6 text-2xl">Winner: <span class="text-accent font-bold">${data.winner}</span></p>
+                            <div class="stats shadow">
+                                <div class="stat">
+                                    <div class="stat-title">New Rating</div>
+                                    <div class="stat-value text-primary">${data.new_ratings[data.winner]}</div>
+                                    <div class="stat-desc text-success">↗︎ ${data.change} points</div>
+                                </div>
+                            </div>
+                            <button class="btn btn-primary mt-8" onclick="location.reload()">REMATCH</button>
+                        </div>
+                    </div>
+                </div>
+            `;
         });
-
-        // --- POLLING ---
-        function startPolling(problems) {
-            // Keep track of what I have locally solved to stop spamming server
-            let mySolved = new Set();
-            
-            pollingInterval = setInterval(async () => {
-                try {
-                    const res = await fetch(`https://codeforces.com/api/user.status?handle=${myHandle}&from=1&count=5`);
-                    const data = await res.json();
-                    if (data.status === 'OK') {
-                        for (const sub of data.result) {
-                            if (sub.verdict === 'OK') {
-                                const pid = String(sub.problem.contestId) + sub.problem.index;
-                                if (targetProblemIds.includes(pid) && !mySolved.has(pid)) {
-                                    console.log("Solved new problem:", pid);
-                                    mySolved.add(pid);
-                                    // Report to Server
-                                    socket.emit('report_solve', {
-                                        room: roomId,
-                                        winner: myHandle,
-                                        problem_id: pid
-                                    });
-                                }
-                            }
-                        }
-                    }
-                } catch(e) { console.log(e); }
-            }, 5000);
-        }
     </script>
 </body>
 </html>
