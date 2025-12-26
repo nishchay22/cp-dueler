@@ -16,17 +16,17 @@ RUN g++ -O3 main.cpp -o cp_engine -pthread
 FROM python:3.9-slim
 WORKDIR /app
 
-# Install Python dependencies
+# Install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy C++ Binary from Stage 1
-COPY --from=cpp-builder /build/cp_engine .
+# Copy C++ Binary
+COPY --from=cpp-builder /build/cp_engine ./cpp_backend/cp_engine
 
-# Copy Python App & Templates
+# Copy ALL App files (including fetch_data.py)
 COPY . .
 
-# Fix Windows line endings in start.sh (Just in case)
+# Fix line endings
 RUN sed -i 's/\r$//' start.sh && chmod +x start.sh
 
 # Environment Config
