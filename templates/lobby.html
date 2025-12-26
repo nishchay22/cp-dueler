@@ -11,40 +11,52 @@
         /* Custom Lockout Animations */
         .card-problem { transition: all 0.3s ease; }
         .locked-opponent { filter: grayscale(100%); opacity: 0.5; border: 2px solid #ff5722; pointer-events: none; }
-        .locked-me { border: 2px solid #00e676; box-shadow: 0 0 15px #00e676; }
-        
-        /* Smooth fade in */
+        .locked-me { border: 2px solid #00e676; box-shadow: 0 0 15px #00e676; transform: scale(1.02); }
         .fade-in { animation: fadeIn 0.5s ease-in; }
         @keyframes fadeIn { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
     </style>
 </head>
 <body class="min-h-screen bg-base-300 flex flex-col items-center p-4">
 
-    <div class="navbar bg-neutral text-neutral-content rounded-box shadow-lg mb-6 w-full max-w-5xl">
+    <div class="navbar bg-neutral text-neutral-content rounded-box shadow-lg mb-6 w-full max-w-6xl">
         <div class="flex-1">
             <a class="btn btn-ghost normal-case text-xl text-primary font-bold tracking-widest">CP DUELER</a>
         </div>
         <div class="flex-none gap-4">
-            <div class="badge badge-accent badge-lg font-mono" id="room-badge">{{ room_id }}</div>
-            <div class="font-mono text-2xl font-black text-warning" id="timer-display">00:00</div>
+            <div class="font-mono text-2xl font-black text-warning hidden" id="timer-display">00:00</div>
+            
+            <button class="btn btn-accent btn-sm gap-2" onclick="copyLink()">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                SHARE LOBBY
+            </button>
         </div>
     </div>
 
-    <div class="container max-w-5xl w-full">
+    <div class="container max-w-6xl w-full">
         
         <div id="setup-ui" class="hero bg-base-200 rounded-box p-10 shadow-2xl">
-            <div class="hero-content text-center flex-col">
-                <h1 class="text-5xl font-bold font-mono mb-6">PREPARE FOR BATTLE</h1>
+            <div class="hero-content text-center flex-col w-full">
                 
-                <div class="join">
+                <h1 class="text-5xl font-bold font-mono mb-2">PREPARE FOR BATTLE</h1>
+                <p class="py-2 opacity-60">Room ID: {{ room_id }} • Mode: {{ mode.upper() }}</p>
+                
+                <div id="join-section" class="join mt-6">
                     <input id="handle" class="input input-bordered input-primary join-item w-full max-w-xs" placeholder="Codeforces Handle" />
                     <button class="btn btn-primary join-item" onclick="join()">JOIN</button>
                 </div>
 
-                <div id="lobby-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8 w-full hidden">
-                    </div>
+                <div id="lobby-section" class="hidden w-full mt-8">
+                    <div id="lobby-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        </div>
 
-                <button id="btn-start" class="btn btn-error btn-wide mt-8 hidden text-lg font-bold animate-pulse" onclick="startGame()">INITIATE SEQUENCE</button>
+                    <div class="divider"></div>
+                    
+                    <button id="btn-start" class="btn btn-error btn-wide btn-lg text-lg font-bold animate-pulse hidden" onclick="startGame()">
+                        INITIATE SEQUENCE
+                    </button>
+                    <p id="wait-msg" class="text-xs opacity-50 mt-2 animate-pulse">WAITING FOR PLAYERS TO READY UP...</p>
+                </div>
+
             </div>
         </div>
 
@@ -53,7 +65,7 @@
                 
                 <div class="flex-1">
                     <h2 class="text-2xl font-bold mb-4 text-secondary">TARGETS</h2>
-                    <div id="problems-area" class="grid grid-cols-2 md:grid-cols-3 gap-4"></div>
+                    <div id="problems-area" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
                 </div>
 
                 <div class="w-full lg:w-96">
@@ -70,6 +82,10 @@
                             <tbody id="leaderboard-body"></tbody>
                         </table>
                     </div>
+                    
+                    <div class="mt-6 p-4 bg-base-200 rounded-lg h-40 overflow-y-auto text-xs font-mono opacity-70" id="game-logs">
+                        <div>> SYSTEM INITIALIZED...</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -82,27 +98,65 @@
         const roomId = "{{ room_id }}";
         const mode = "{{ mode }}";
         let myHandle = "";
-        
-        // ... (Keep your existing join/start/polling logic) ...
-        // ... Only the Render Logic changes below ...
+        let pollingInterval = null;
+        let endTime = 0;
+        let targetProblemIds = [];
+
+        /* --- UTILS --- */
+        function showToast(msg, type='info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `alert alert-${type}`;
+            toast.innerHTML = `<span>${msg}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function log(msg) {
+            const logs = document.getElementById('game-logs');
+            logs.innerHTML += `<div>> ${msg}</div>`;
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        function copyLink() {
+            navigator.clipboard.writeText(window.location.href);
+            showToast("Lobby Link Copied!", "success");
+        }
+
+        /* --- JOIN LOGIC --- */
+        function join() {
+            const h = document.getElementById('handle').value;
+            if(!h) return showToast("Enter your handle!", "warning");
+            myHandle = h.trim();
+            
+            // UI Transition: Hide Input -> Show Grid
+            document.getElementById('join-section').classList.add('hidden');
+            document.getElementById('lobby-section').classList.remove('hidden');
+            
+            socket.emit('join', {room: roomId, handle: myHandle});
+        }
+
+        function toggleReady() { socket.emit('toggle_ready', {room: roomId, handle: myHandle}); }
+        function startGame() { socket.emit('start_game', {room: roomId}); }
 
         socket.on('update_players', (players) => {
-            document.getElementById('lobby-grid').classList.remove('hidden');
+            // Render Player Cards
             document.getElementById('lobby-grid').innerHTML = players.map(p => `
                 <div class="card bg-base-100 shadow-xl border-l-4 ${p.ready ? 'border-success' : 'border-error'}">
                     <div class="card-body flex-row items-center gap-4 p-4">
                         <div class="avatar placeholder">
                             <div class="bg-neutral-focus text-neutral-content rounded-full w-12">
-                                <span class="text-xl">${p.handle[0].toUpperCase()}</span>
+                                <span class="text-xl font-bold">${p.handle[0].toUpperCase()}</span>
                             </div>
                         </div>
-                        <div class="flex-1">
+                        <div class="flex-1 text-left">
                             <h2 class="card-title text-sm">${p.handle}</h2>
-                            <div class="badge badge-outline text-xs">${p.rating || 1500} MMR</div>
+                            <div class="badge badge-ghost badge-xs">${p.rating || 1500} Rating</div>
                         </div>
+                        
                         ${p.handle === myHandle ? 
                           `<button class="btn btn-sm ${p.ready ? 'btn-success' : 'btn-outline'}" onclick="toggleReady()">
-                             ${p.ready ? 'READY' : 'WAIT'}
+                             ${p.ready ? 'READY' : 'CLICK TO READY'}
                            </button>` : 
                           `<span class="text-xs font-bold ${p.ready ? 'text-success' : 'text-error'}">
                              ${p.ready ? 'READY' : 'WAITING'}
@@ -112,17 +166,30 @@
                 </div>
             `).join('');
 
+            // Start Button Logic
             const allReady = players.length > 0 && players.every(p => p.ready);
             const btnStart = document.getElementById('btn-start');
-            if(allReady) btnStart.classList.remove('hidden');
-            else btnStart.classList.add('hidden');
+            const waitMsg = document.getElementById('wait-msg');
+            
+            if(allReady) {
+                btnStart.classList.remove('hidden');
+                waitMsg.classList.add('hidden');
+            } else {
+                btnStart.classList.add('hidden');
+                waitMsg.classList.remove('hidden');
+            }
         });
 
+        /* --- GAME START --- */
         socket.on('game_started', (data) => {
+            // Transition: Setup -> Game
             document.getElementById('setup-ui').classList.add('hidden');
             document.getElementById('game-ui').classList.remove('hidden');
+            document.getElementById('timer-display').classList.remove('hidden');
+
+            targetProblemIds = (data.track_ids || []).map(String);
             
-            // Render Cards with DaisyUI
+            // Render Problems
             document.getElementById('problems-area').innerHTML = data.problems.map((p, idx) => `
                 <div id="card-${p.id}" class="card bg-base-100 shadow-xl card-problem hover:shadow-2xl hover:border-primary border border-transparent">
                     <div class="card-body p-5">
@@ -137,43 +204,120 @@
                 </div>
             `).join('');
 
-            // ... (Start Timer/Polling) ...
+            // Start Timer
+            endTime = data.end_time * 1000;
+            setInterval(updateTimer, 1000);
+            updateTimer();
+            startPolling(); // Start Checking CF API
+            
+            showToast("BATTLE STARTED!", "success");
+            log("Battle initiated. Good luck.");
         });
 
-        // LOCKOUT VISUAL LOGIC
+        function updateTimer() {
+            const now = Date.now();
+            const diff = endTime - now;
+            const display = document.getElementById('timer-display');
+            
+            if (diff <= 0) {
+                display.innerText = "00:00";
+                display.classList.add('text-error');
+                if(pollingInterval) clearInterval(pollingInterval);
+                return;
+            }
+            
+            const m = Math.floor((diff % 3600000) / 60000);
+            const s = Math.floor((diff % 60000) / 1000);
+            display.innerText = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+        }
+
+        /* --- UPDATES & EVENTS --- */
         socket.on('problem_locked', (data) => {
             const card = document.getElementById(`card-${data.id}`);
             if(!card) return;
             
             if(data.winner === myHandle) {
                 card.classList.add('locked-me');
-                // Optional: Add "Claimed" badge
+                log(`You claimed ${data.id}!`);
             } else {
                 card.classList.add('locked-opponent');
+                log(`${data.winner} snatched ${data.id}!`);
+                showToast(`${data.winner} locked a problem!`, "error");
+            }
+        });
+
+        socket.on('update_leaderboard', (scores) => {
+            const sorted = Object.keys(scores).map(h => ({
+                handle: h, solved: scores[h].solved, penalty: scores[h].penalty
+            })).sort((a, b) => b.solved.length - a.solved.length || a.penalty - b.penalty);
+
+            document.getElementById('leaderboard-body').innerHTML = sorted.map((p, i) => `
+                <tr class="${p.handle === myHandle ? 'bg-base-200 font-bold' : ''}">
+                    <td>${i+1}</td>
+                    <td>${p.handle}</td>
+                    <td class="text-primary">${p.solved.length} <span class="text-xs opacity-50">(${p.penalty})</span></td>
+                </tr>
+            `).join('');
+
+            // Highlight solved cards (for non-lockout modes or self)
+            if (scores[myHandle]) {
+                scores[myHandle].solved.forEach(pid => {
+                    const card = document.getElementById(`card-${pid}`);
+                    if(card && !card.classList.contains('locked-me')) {
+                        card.classList.add('border-success');
+                    }
+                });
             }
         });
 
         socket.on('game_over', (data) => {
-            // Cyberpunk Victory Modal
+            if(pollingInterval) clearInterval(pollingInterval);
+            // Victory Screen Replacement
             document.body.innerHTML = `
-                <div class="hero min-h-screen bg-base-200">
+                <div class="hero min-h-screen bg-base-300">
                     <div class="hero-content text-center">
                         <div class="max-w-md">
                             <h1 class="text-6xl font-black text-primary mb-4">VICTORY</h1>
                             <p class="py-6 text-2xl">Winner: <span class="text-accent font-bold">${data.winner}</span></p>
-                            <div class="stats shadow">
+                            
+                            <div class="stats shadow bg-base-100 mb-8">
                                 <div class="stat">
-                                    <div class="stat-title">New Rating</div>
-                                    <div class="stat-value text-primary">${data.new_ratings[data.winner]}</div>
-                                    <div class="stat-desc text-success">↗︎ ${data.change} points</div>
+                                    <div class="stat-title">Rating Change</div>
+                                    <div class="stat-value text-success">+${data.change}</div>
+                                    <div class="stat-desc">New Rating: ${data.new_ratings[data.winner]}</div>
                                 </div>
                             </div>
-                            <button class="btn btn-primary mt-8" onclick="location.reload()">REMATCH</button>
+                            
+                            <button class="btn btn-primary btn-wide" onclick="location.reload()">PLAY AGAIN</button>
                         </div>
                     </div>
                 </div>
             `;
         });
+
+        socket.on('notification', (msg) => log(msg));
+        socket.on('error', (msg) => showToast(msg, "error"));
+
+        /* --- POLLING --- */
+        function startPolling() {
+            // Spam Strategy: Check every 5s, report any target match found
+            pollingInterval = setInterval(async () => {
+                try {
+                    const res = await fetch(`https://codeforces.com/api/user.status?handle=${myHandle}&from=1&count=5`);
+                    const data = await res.json();
+                    if (data.status === 'OK') {
+                        for (const sub of data.result) {
+                            if (sub.verdict === 'OK') {
+                                const pid = String(sub.problem.contestId) + sub.problem.index;
+                                if (targetProblemIds.includes(pid)) {
+                                    socket.emit('report_solve', {room: roomId, winner: myHandle, problem_id: pid});
+                                }
+                            }
+                        }
+                    }
+                } catch(e) {}
+            }, 5000);
+        }
     </script>
 </body>
 </html>
